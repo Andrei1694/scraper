@@ -19,6 +19,16 @@ const fetchArticles = async (URL) => {
 	}
 };
 
+const sanitizeFilename = (text) => {
+	const replacements = {
+		'ă': 'a', 'â': 'a', 'ș': 's', 'ş': 's', 'ț': 't', 'ţ': 't', 'î': 'i',
+		'Ă': 'A', 'Â': 'A', 'Ș': 'S', 'Ş': 'S', 'Ț': 'T', 'Ţ': 'T', 'Î': 'I'
+	};
+	return text.replace(/[ăâșşțţîĂÂȘŞȚŢÎ]/g, match => replacements[match])
+		.replace(/[^a-zA-Z0-9.-]/g, '-')
+		.toLowerCase();
+};
+
 const downloadAsPDF = async (browser, url, filename) => {
 	const COOKIE = {
 		name: "substack.sid",
@@ -33,35 +43,22 @@ const downloadAsPDF = async (browser, url, filename) => {
 	try {
 		const page = await browser.newPage();
 		await page.setCookie(COOKIE);
-		// Set viewport for better PDF rendering
 		await page.setViewport({ width: 1200, height: 800 });
-
-		// Navigate to the URL with a timeout of 30 seconds
 		await page.goto(url, { waitUntil: 'networkidle0', timeout: 30000 });
-
-		// Wait for the article content to load
 		await page.waitForSelector('article', { timeout: 10000 });
 
-		// Create PDFs directory if it doesn't exist
 		const pdfDir = path.join(process.cwd(), 'pdfs');
 		if (!fs.existsSync(pdfDir)) {
 			fs.mkdirSync(pdfDir);
 		}
 
-		// Generate PDF
 		await page.pdf({
 			path: path.join(pdfDir, filename),
 			format: 'A4',
 			printBackground: true,
-			preferCSSPageSize: true,  // Ensures it follows CSS page size
-			timeout: 60000,  // Timeout of 60 seconds
-			waitUntil: 'networkidle0',  // Ensures the page has fully loaded
-			margin: {
-				top: '20px',
-				right: '20px',
-				bottom: '20px',
-				left: '20px'
-			}
+			preferCSSPageSize: true,
+			timeout: 60000,
+			margin: { top: '20px', right: '20px', bottom: '20px', left: '20px' }
 		});
 
 		await page.close();
@@ -79,44 +76,33 @@ const scrapeAndDownload = async () => {
 	try {
 		while (responseStatus === 200) {
 			await delay(1000);
-
 			const URL = `https://bodyengineering.substack.com/api/v1/archive?sort=new&search=&offset=${offset}&limit=${limit}`;
 			const [data, status] = await fetchArticles(URL);
-
 			if (data.length === 0) {
 				console.log('No more articles to fetch');
 				break;
 			}
 
-			// Process the articles
 			for (const [index, article] of data.entries()) {
 				const articleId = offset + index + 1;
-				links.push({
-					id: articleId,
-					url: article.canonical_url,
-				});
+				const sanitizedTitle = sanitizeFilename(article.title);
+				const filename = `${articleId}.${sanitizedTitle}.pdf`;
+				links.push({ id: articleId, url: article.canonical_url });
 
-				// Generate filename from article title or ID
-				const filename = `article_${articleId}.pdf`;
 				console.log(`Downloading ${filename} from ${article.canonical_url}`);
-
-				// Download PDF with retry mechanism
 				let success = false;
 				for (let attempt = 1; attempt <= 3 && !success; attempt++) {
 					if (attempt > 1) {
 						console.log(`Retry attempt ${attempt} for ${filename}`);
-						await delay(3000); // Wait longer between retries
+						await delay(3000);
 					}
 					success = await downloadAsPDF(browser, article.canonical_url, filename);
 				}
-
 				if (success) {
 					console.log(`Successfully downloaded ${filename}`);
 				} else {
 					console.log(`Failed to download ${filename} after 3 attempts`);
 				}
-
-				// Delay between article downloads
 				await delay(2000);
 			}
 
@@ -125,11 +111,8 @@ const scrapeAndDownload = async () => {
 			console.log(`Processed articles up to offset: ${offset}`);
 		}
 
-		// Save links to file
-		const jsonString = JSON.stringify(links, null, 2);
-		fs.writeFileSync('data.json', jsonString);
+		fs.writeFileSync('data.json', JSON.stringify(links, null, 2));
 		console.log(`Successfully saved ${links.length} article links to data.json`);
-
 	} catch (error) {
 		console.error('Error in main process:', error);
 	} finally {
@@ -137,7 +120,6 @@ const scrapeAndDownload = async () => {
 	}
 };
 
-// Run the scraper
 scrapeAndDownload().then(() => {
 	console.log('Script completed');
 }).catch(error => {
