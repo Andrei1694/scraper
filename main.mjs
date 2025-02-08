@@ -20,9 +20,19 @@ const fetchArticles = async (URL) => {
 };
 
 const downloadAsPDF = async (browser, url, filename) => {
+	const COOKIE = {
+		name: "substack.sid",
+		value: "s:f7QQ-N-dtHPgoClmM04AuCE5XGQOYP6b.RIGOdPGBbLJRDG6aevCcPTxMuMiJ451OT5qFUcRQKpA",
+		domain: "bodyengineering.substack.com",
+		path: "/",
+		expires: Math.floor(Date.now() / 1000) + 60 * 60 * 24, // expires in 24 hours
+		httpOnly: true,
+		secure: true,
+		sameSite: "Strict",
+	};
 	try {
 		const page = await browser.newPage();
-
+		await page.setCookie(COOKIE);
 		// Set viewport for better PDF rendering
 		await page.setViewport({ width: 1200, height: 800 });
 
@@ -42,13 +52,16 @@ const downloadAsPDF = async (browser, url, filename) => {
 		await page.pdf({
 			path: path.join(pdfDir, filename),
 			format: 'A4',
+			printBackground: true,
+			preferCSSPageSize: true,  // Ensures it follows CSS page size
+			timeout: 60000,  // Timeout of 60 seconds
+			waitUntil: 'networkidle0',  // Ensures the page has fully loaded
 			margin: {
 				top: '20px',
 				right: '20px',
 				bottom: '20px',
 				left: '20px'
-			},
-			printBackground: true
+			}
 		});
 
 		await page.close();
@@ -67,7 +80,7 @@ const scrapeAndDownload = async () => {
 		while (responseStatus === 200) {
 			await delay(1000);
 
-			const URL = `https://biancaoanea.substack.com/api/v1/archive?sort=new&search=&offset=${offset}&limit=${limit}`;
+			const URL = `https://bodyengineering.substack.com/api/v1/archive?sort=new&search=&offset=${offset}&limit=${limit}`;
 			const [data, status] = await fetchArticles(URL);
 
 			if (data.length === 0) {
